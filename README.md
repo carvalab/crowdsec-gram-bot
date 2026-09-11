@@ -12,4 +12,4 @@ Commands: `/bans` `/unban <ip>` `/unbanwl <ip>` (delete + whitelist 90d) `/help`
 3. `cp .env.example .env` and fill values
 4. `docker compose up -d --build`
 
-cscli equivalents: `cscli decisions list`, `cscli decisions delete --ip x.x.x.x`, `cscli allowlists add telegram-temp x.x.x.x --expiration 2160h`.
+cscli equivalents: `cscli decisions list`, `cscli decisions delete --ip x.x.x.x`, `cscli allowlists add telegram-temp x.x.x.x -e 2160h`.

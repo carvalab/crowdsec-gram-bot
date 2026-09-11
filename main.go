@@ -213,7 +213,7 @@ func (l *lapi) allowlistAdd(ctx context.Context, ip string) error {
 		if st == 404 {
 			continue
 		}
-		return fmt.Errorf("allowlist %d: %s (cscli equiv: cscli allowlists add %s %s --expiration %s)",
+		return fmt.Errorf("allowlist %d: %s (cscli equiv: cscli allowlists add %s %s -e %s)",
 			st, compact(b), l.c.allowID, ip, l.c.ttl)
 	}
 	return fmt.Errorf("allowlist endpoint not found; create list first: cscli allowlists create %s", l.c.allowID)

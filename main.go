@@ -3,10 +3,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 )
+
+// sigContext cancels on Ctrl-C or SIGTERM (systemd/docker stop).
+// Callers must defer the returned cancel.
+func sigContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+}
 
 var version = "dev"
 var commit = "none"
@@ -41,8 +50,17 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
-	if os.Args[1] == "version" {
+	switch os.Args[1] {
+	case "version":
 		fmt.Println(runVersion())
+		return
+	case "bot":
+		ctx, cancel := sigContext()
+		defer cancel()
+		if err := runBot(ctx); err != nil {
+			fmt.Fprintln(os.Stderr, "error: "+err.Error())
+			os.Exit(1)
+		}
 		return
 	}
 	fmt.Fprintln(os.Stderr, "not implemented yet: "+os.Args[1])

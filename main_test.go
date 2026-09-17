@@ -103,3 +103,33 @@ func TestConfigValidate(t *testing.T) {
 }
 
 func errText(s string) error { return errors.New(s) }
+
+func TestArgIP(t *testing.T) {
+	ip, ok := argIP("/unban 1.2.3.4")
+	if !ok || ip != "1.2.3.4" {
+		t.Fatalf("argIP = %q,%v", ip, ok)
+	}
+	if _, ok := argIP("/unban not-an-ip"); ok {
+		t.Fatal("argIP accepted garbage")
+	}
+	if _, ok := argIP("/unban"); ok {
+		t.Fatal("argIP accepted missing arg")
+	}
+}
+
+func TestIsAdmin(t *testing.T) {
+	if !isAdmin(42, 42) || isAdmin(43, 42) {
+		t.Fatal("isAdmin wrong")
+	}
+}
+
+func TestIsCommand(t *testing.T) {
+	if !isCommand("/unban 1.2.3.4", "/unban") || !isCommand("/unban@mybot 1.2.3.4", "/unban") {
+		t.Fatal("valid /unban rejected")
+	}
+	for _, m := range []string{"/unbanwl 1.2.3.4", "/unbanned 1.2.3.4", "/unban2 1.2.3.4", ""} {
+		if isCommand(m, "/unban") {
+			t.Fatalf("%q accepted as /unban", m)
+		}
+	}
+}

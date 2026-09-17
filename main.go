@@ -17,6 +17,13 @@ func sigContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
+// mustCtx is sigContext for short-lived CLI runs (cancel at process exit).
+func mustCtx() context.Context {
+	ctx, cancel := sigContext()
+	_ = cancel
+	return ctx
+}
+
 var version = "dev"
 var commit = "none"
 var date = "unknown"
@@ -53,6 +60,15 @@ func main() {
 	switch os.Args[1] {
 	case "version":
 		fmt.Println(runVersion())
+		return
+	case "bans":
+		runBansCmd(mustCtx(), os.Args[2:])
+		return
+	case "unban":
+		runUnbanCmd(mustCtx(), os.Args[2:], false)
+		return
+	case "unbanwl":
+		runUnbanCmd(mustCtx(), os.Args[2:], true)
 		return
 	case "bot":
 		ctx, cancel := sigContext()

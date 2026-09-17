@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"github.com/carvalab/crowdsec-gram-bot/internal/lapi"
 	"net/url"
 	"strings"
@@ -131,5 +132,23 @@ func TestIsCommand(t *testing.T) {
 		if isCommand(m, "/unban") {
 			t.Fatalf("%q accepted as /unban", m)
 		}
+	}
+}
+
+func TestCLIDryRunUnban(t *testing.T) {
+	t.Setenv("DRY_RUN", "1")
+	out, err := runUnban(context.Background(), "9.9.9.9")
+	if err != nil || !strings.Contains(out, "9.9.9.9") {
+		t.Fatalf("runUnban dry-run = %q, err = %v", out, err)
+	}
+}
+
+func TestParseMixedFlagAfterPositional(t *testing.T) {
+	fs := flag.NewFlagSet("t", flag.ContinueOnError)
+	dry := fs.Bool("dry-run", false, "")
+	ttl := fs.String("ttl", "", "")
+	rest := parseMixed(fs, "t <ip>", []string{"9.9.9.9", "--dry-run", "--ttl", "720h"})
+	if !*dry || *ttl != "720h" || len(rest) != 1 || rest[0] != "9.9.9.9" {
+		t.Fatalf("dry=%v ttl=%q rest=%q", *dry, *ttl, rest)
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/carvalab/crowdsec-gram-bot/internal/cscli"
 	"github.com/carvalab/crowdsec-gram-bot/internal/lapi"
+	"github.com/carvalab/crowdsec-gram-bot/internal/update"
 )
 
 // exit codes: 0 ok, 1 runtime error, 2 usage error.
@@ -171,4 +172,36 @@ func runUnbanCmd(ctx context.Context, args []string, whitelist bool) {
 		fatalErr(err)
 	}
 	fmt.Println(out)
+}
+
+// runUpdateCmd checks GitHub releases and optionally self-updates.
+func runUpdateCmd(ctx context.Context, args []string) {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	checkOnly := fs.Bool("check-only", false, "print versions without updating")
+	rest := parseMixed(fs, "update [--check-only]", args)
+	if len(rest) != 0 {
+		fatalUsage("update [--check-only]")
+	}
+	repo := getenv("GITHUB_REPO", "carvalab/crowdsec-gram-bot")
+	token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
+	latest, notes, err := update.Latest(ctx, repo, token)
+	if err != nil {
+		fatalErr(err)
+	}
+	fmt.Printf("current=%s latest=%s update-available=%v\n", version, latest, update.NeedsUpdate(version, latest))
+	if notes != "" {
+		head := notes
+		if r := []rune(head); len(r) > 500 {
+			head = string(r[:500]) + "…"
+		}
+		fmt.Println(head)
+	}
+	if *checkOnly || !update.NeedsUpdate(version, latest) {
+		return
+	}
+	tag, err := update.Apply(ctx, repo, token)
+	if err != nil {
+		fatalErr(err)
+	}
+	fmt.Printf("updated to %s; restart the service: systemctl --no-block restart crowdsec-gram-bot\n", tag)
 }

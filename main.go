@@ -70,6 +70,9 @@ func main() {
 	case "unbanwl":
 		runUnbanCmd(mustCtx(), os.Args[2:], true)
 		return
+	case "update":
+		runUpdateCmd(mustCtx(), os.Args[2:])
+		return
 	case "bot":
 		ctx, cancel := sigContext()
 		defer cancel()

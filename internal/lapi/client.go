@@ -32,6 +32,18 @@ type Decision struct {
 	Until    string `json:"until"`
 }
 
+// StatusError is a non-2xx LAPI response. Callers use errors.As to
+// classify it (404 → cscli fallback; 401/403 → auth error, no fallback).
+type StatusError struct {
+	Code int
+	Op   string
+	Body string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("%s %d: %s", e.Op, e.Code, compact([]byte(e.Body)))
+}
+
 // Client talks to LAPI with a cached JWT from watchers/login.
 // Safe for concurrent use by multiple goroutines.
 type Client struct {
@@ -206,7 +218,7 @@ func (l *Client) ListDecisions(ctx context.Context) ([]Decision, error) {
 		return nil, err
 	}
 	if st != 200 {
-		return nil, fmt.Errorf("list %d: %s", st, compact(b))
+		return nil, &StatusError{Code: st, Op: "list", Body: string(b)}
 	}
 	var out []Decision
 	if err := json.Unmarshal(b, &out); err != nil {
@@ -224,7 +236,7 @@ func (l *Client) DeleteDecision(ctx context.Context, ip string) error {
 	if st == 200 || st == 202 || st == 204 {
 		return nil
 	}
-	return fmt.Errorf("delete %d: %s", st, compact(b))
+	return &StatusError{Code: st, Op: "delete", Body: string(b)}
 }
 
 // AllowlistAdd adds ip to the allowlist with TTL expiry. Endpoint naming
@@ -242,7 +254,7 @@ func (l *Client) AllowlistAdd(ctx context.Context, ip string) error {
 		if st == 404 {
 			continue
 		}
-		return fmt.Errorf("allowlist %d: %s (cscli equiv: cscli allowlists add %s %s -e %s)", st, compact(b), l.c.AllowID, ip, l.c.TTL)
+		return &StatusError{Code: st, Op: fmt.Sprintf("allowlist (cscli equiv: cscli allowlists add %s %s -e %s)", l.c.AllowID, ip, l.c.TTL), Body: string(b)}
 	}
 	return fmt.Errorf("allowlist endpoint not found; create list first: cscli allowlists create %s", l.c.AllowID)
 }

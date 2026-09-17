@@ -26,17 +26,18 @@ One module `github.com/carvalab/crowdsec-gram-bot`, stdlib `flag`-style dispatch
 
 ## systemd
 - Unit `systemd/crowdsec-gram-bot.service`: `ExecStart=/usr/local/bin/crowdsec-gram-bot bot`, `EnvironmentFile=/etc/crowdsec-gram-bot.env`, `Restart=always`, `NoNewPrivileges=true`, `ProtectSystem=strict` (writable `/tmp` only unless cscli fallback needs `cscli` in `PATH`).
-- `install.sh`: copies binary, writes unit, `daemon-reload + enable --now`. Env file `0600 root:root`, never committed.
+- `install.sh`: copies binary, writes unit, ensures `/etc/crowdsec-gram-bot.env` exists (seeded from `.env.example` if missing, `0600 root:root`), then opens `$EDITOR` (fallback `vi`) so the installer configures secrets on first run; `--no-edit` skips. Then `daemon-reload + enable --now`. Env file never committed.
 - Docker kept only for dev parity; production path is systemd.
 
 ## Autoupdate / releases
 - goreleaser: `linux/amd64,arm64` tar.gz + checksums, tag `vX.Y.Z` triggers release.
-- Updater lib: `github.com/minio/selfupdate` (apply) + plain GitHub REST `GET /repos/{owner}/{repo}/releases/latest` (no heavy github client needed). Asset match `runtime.GOOS/runtime.GOARCH`.
+- Updater lib: `github.com/minio/selfupdate` (apply) + plain GitHub REST `GET /repos/{owner}/{repo}/releases/latest` (no heavy github client needed). Asset match `runtime.GOOS/runtime.GOARCH`. `Authorization: Bearer $GITHUB_TOKEN` sent only when set (private repo); updater fails fast with `set GITHUB_TOKEN for private repo` on 401/404.
 - Bot logs `new version available, run update` on start; `update` does replace + `systemctl --no-block restart` hint. Optional timer unit later, not in v1.
 
 ## Config / env
 Keys (same for `.env` dev and `/etc/crowdsec-gram-bot.env` prod):
-`TELEGRAM_TOKEN` (required), `TELEGRAM_ADMIN_ID` (required, numeric chat id), `CROWDSEC_LAPI_URL` (default `http://127.0.0.1:8080`), `CROWDSEC_MACHINE_LOGIN/PASSWORD` (required — machine creds from `cscli machines add telegram-bot --auto`), `ALLOWLIST_ID` (default `telegram-temp`), `WHITELIST_TTL` (default `2160h`), `LIST_LIMIT` (default `50`), `USE_CSCLI` (`0|1|auto`, default `auto`), `GITHUB_REPO` (`owner/repo` for updater).
+`TELEGRAM_TOKEN` (required), `TELEGRAM_ADMIN_ID` (required, numeric chat id), `CROWDSEC_LAPI_URL` (default `http://127.0.0.1:8080`), `CROWDSEC_MACHINE_LOGIN/PASSWORD` (required — machine creds from `cscli machines add telegram-bot --auto`), `ALLOWLIST_ID` (default `telegram-temp`), `WHITELIST_TTL` (default `2160h`), `LIST_LIMIT` (default `50`), `USE_CSCLI` (`0|1|auto`, default `auto`), `GITHUB_REPO` (default `carvalab/crowdsec-gram-bot` — this origin), `GITHUB_TOKEN` (required for private repo, `contents:read`; empty = public anonymous mode, 60 req/h).
+Fresh `.env.example` ships all keys with comments; `install.sh` seeds `/etc/crowdsec-gram-bot.env` from it.
 Fail fast with `missing required env X` on start.
 
 ## Security

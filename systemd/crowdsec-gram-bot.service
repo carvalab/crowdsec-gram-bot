@@ -1,0 +1,17 @@
+[Unit]
+Description=crowdsec-gram-bot Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/crowdsec-gram-bot bot
+EnvironmentFile=/etc/crowdsec-gram-bot.env
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+version: 2
+project_name: crowdsec-gram-bot
+builds:
+  - main: .
+    binary: crowdsec-gram-bot
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+archives:
+  - name_template: "{{.ProjectName}}_{{trimV .Version}}_linux_{{.Arch}}"
+    formats: [tar.gz]
+checksum:
+  name_template: checksums.txt
+release:
+  github:
+    owner: carvalab
+    name: crowdsec-gram-bot

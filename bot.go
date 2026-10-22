@@ -67,6 +67,10 @@ func runBot(ctx context.Context) error {
 		log.Printf("telegram: set command menu: %v", err)
 	}
 	log.Printf("crowdsec-gram-bot %s started, answering Telegram user %d only", version, admin)
+	announce(ctx, os.Getenv("STATE_DIRECTORY"), func(ctx context.Context, text string) error {
+		_, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: admin, Text: text})
+		return err
+	})
 	b.Start(ctx)
 	return nil
 }

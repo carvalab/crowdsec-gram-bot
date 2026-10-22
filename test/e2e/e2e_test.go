@@ -150,6 +150,21 @@ func (e *env) reply(want ...string) call {
 	return got
 }
 
+// sentSoon waits for any message from the bot that contains want, without
+// moving the reply cursor.
+func (e *env) sentSoon(want string) {
+	e.t.Helper()
+	waitFor(e.t, fmt.Sprintf("the bot to send %q", want), 45*time.Second, func() bool {
+		for _, c := range e.sent() {
+			if c.Method == "sendMessage" && strings.Contains(c.Fields["text"], want) {
+				e.chat = append(e.chat, map[string]string{"bot": c.Fields["text"]})
+				return true
+			}
+		}
+		return false
+	})
+}
+
 func (e *env) noReply() {
 	e.t.Helper()
 	time.Sleep(4 * time.Second)
@@ -278,6 +293,8 @@ func TestEndToEnd(t *testing.T) {
 		e.mustSh("printf 'TELEGRAM_API_URL=http://127.0.0.1:8081\\n' >> /etc/crowdsec-gram-bot/bot.env")
 		e.mustSh("printf 'GITHUB_API_URL=http://127.0.0.1:8081\\nGITHUB_REPO=o/r\\nGITHUB_TOKEN=" + ghToken + "\\n' >> /etc/crowdsec-gram-bot/update.env")
 		e.mustSh("systemctl restart crowdsec-gram-bot")
+		e.sentSoon("crowdsec-gram-bot 1.0.0 is running")
+		e.mustSh("systemctl restart crowdsec-gram-bot && sleep 3")
 		waitFor(t, "the bot to register its commands", 30*time.Second, func() bool {
 			for _, c := range e.sent() {
 				if c.Method == "setMyCommands" && strings.Contains(c.Fields["scope"], "4242") {
@@ -287,6 +304,9 @@ func TestEndToEnd(t *testing.T) {
 			return false
 		})
 		e.seen = len(e.sent())
+		if n := strings.Count(fmt.Sprint(e.sent()), "is running"); n != 1 {
+			t.Fatalf("the start notice was sent %d times, want 1: a plain restart must not repeat it", n)
+		}
 		if out := e.mustSh("ps -o user= -p $(systemctl show -p MainPID --value crowdsec-gram-bot)"); strings.TrimSpace(out) != "crowdsec-gram-bot" {
 			t.Fatalf("bot runs as %q", out)
 		}
@@ -426,6 +446,7 @@ func TestEndToEnd(t *testing.T) {
 		if !strings.Contains(e.mustSh("journalctl --no-pager -u crowdsec-gram-bot"), "crowdsec-gram-bot 1.1.0 started") {
 			t.Fatal("the bot did not restart on the new version")
 		}
+		e.sentSoon("Updated to 1.1.0 (was 1.0.0)")
 		if out := e.mustSh("grep -c '^User=crowdsec-gram-bot$' /etc/systemd/system/crowdsec-gram-bot.service; ps -o user= -p $(systemctl show -p MainPID --value crowdsec-gram-bot)"); out != "1\ncrowdsec-gram-bot\n" {
 			t.Fatalf("the update did not restore the unit from the binary: %q", out)
 		}
@@ -444,6 +465,7 @@ func TestEndToEnd(t *testing.T) {
 		if out, err := update(); err != nil || !strings.Contains(out, "skipping v1.2.0") {
 			t.Fatalf("the failed release was tried again: %v\n%s", err, out)
 		}
+		e.sentSoon("v1.2.0 failed its health check after installing, so the server went back to 1.1.0")
 		e.mustSh("sleep 3; systemctl is-active crowdsec-gram-bot")
 		e.seen = len(e.sent())
 		e.push(message(admin, admin, "private", "/help"))

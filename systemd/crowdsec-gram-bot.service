@@ -11,6 +11,7 @@ ExecStart=/usr/local/bin/crowdsec-gram-bot bot
 EnvironmentFile=/etc/crowdsec-gram-bot/bot.env
 User=crowdsec-gram-bot
 Group=crowdsec-gram-bot
+StateDirectory=crowdsec-gram-bot-telegram
 Restart=always
 RestartSec=10
 

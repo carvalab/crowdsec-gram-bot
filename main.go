@@ -19,7 +19,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -129,7 +128,7 @@ func runUpdate(ctx context.Context) error {
 		log.Printf("up to date: running %s, latest release %s", version, rel.Tag)
 		return nil
 	}
-	failed := filepath.Join(getenv("STATE_DIRECTORY", "/var/lib/crowdsec-gram-bot"), "failed-release")
+	failed := failedReleaseFile
 	if b, err := os.ReadFile(failed); err == nil && strings.TrimSpace(string(b)) == rel.Tag {
 		log.Printf("skipping %s: it failed its health check and was rolled back; waiting for a newer release", rel.Tag)
 		return nil
@@ -157,11 +156,12 @@ func runUpdate(ctx context.Context) error {
 		if rbErr := update.Rollback(exe); rbErr != nil {
 			return fmt.Errorf("%s is unhealthy (%v) and rollback failed: %w", rel.Tag, err, rbErr)
 		}
-		if again := healthy(ctx, exe, running); again != nil {
-			return fmt.Errorf("%s is unhealthy (%v), rolled back to %s, which also fails (%v): this looks like a problem on the host, not in the release", rel.Tag, err, version, again)
-		}
 		if wErr := os.WriteFile(failed, []byte(rel.Tag+"\n"), 0o644); wErr != nil {
 			log.Printf("could not record the failed release: %v", wErr)
+		}
+		if again := healthy(ctx, exe, running); again != nil {
+			os.Remove(failed)
+			return fmt.Errorf("%s is unhealthy (%v), rolled back to %s, which also fails (%v): this looks like a problem on the host, not in the release", rel.Tag, err, version, again)
 		}
 		return fmt.Errorf("%s is unhealthy, rolled back to %s: %w", rel.Tag, version, err)
 	}

@@ -55,47 +55,26 @@ Ubuntu's own `crowdsec` package is too old for allowlists.
 
 1. Create the bot with [@BotFather](https://t.me/BotFather) and copy its token.
    Get your numeric user id from [@userinfobot](https://t.me/userinfobot).
-2. On the server, paste this block as is. It downloads the release, checks its
-   signature and checksum, and only then installs. Each step stops the rest if
-   it fails. It picks `amd64` or `arm64` for your server by itself.
+2. On the server, as your normal user:
 
 ```sh
-arch=$(dpkg --print-architecture) && mkdir -p ~/csgb && cd ~/csgb && \
-base=https://github.com/carvalab/crowdsec-gram-bot/releases/latest/download && \
-echo "1/4 downloading crowdsec-gram-bot_linux_$arch" && \
-curl -fL --connect-timeout 15 --progress-bar -O "$base/crowdsec-gram-bot_linux_$arch" && \
-curl -fsSL --connect-timeout 15 -O "$base/checksums.txt" && \
-curl -fsSL --connect-timeout 15 -O "$base/checksums.txt.sig" && \
-printf '%s\n' '-----BEGIN PUBLIC KEY-----' \
-  'MCowBQYDK2VwAyEAOCmvuqGInMtB99Rd/1cm261kAtVWFeNaBuafHIIU6Dw=' \
-  '-----END PUBLIC KEY-----' > release-signing-key.pub.pem && \
-echo "2/4 checking the signature" && \
-openssl pkeyutl -verify -rawin -pubin -inkey release-signing-key.pub.pem \
-  -in checksums.txt -sigfile checksums.txt.sig && \
-echo "3/4 checking the checksum" && \
-sha256sum --ignore-missing -c checksums.txt && \
-chmod +x "crowdsec-gram-bot_linux_$arch" && \
-echo "4/4 installing (sudo may ask for your password)" && \
-sudo "./crowdsec-gram-bot_linux_$arch" install
+curl -fsSL https://raw.githubusercontent.com/carvalab/crowdsec-gram-bot/main/install.sh | sh
 ```
 
-   You must see `Signature Verified Successfully` and
-   `crowdsec-gram-bot_linux_amd64: OK` (or `arm64`) before the install starts. This check is
-   the one that protects you. `install` checks itself too, but a tampered
-   binary could skip its own check, so that one only catches a damaged
-   download. The key in the block is `PublicKey` from
-   `internal/update/update.go`. Every later update is checked by the installed
-   binary, which you have just verified.
+   [`install.sh`](install.sh) picks `amd64` or `arm64`, downloads the latest
+   release, checks its Ed25519 signature and sha256 checksum, and only then
+   runs `crowdsec-gram-bot install` with `sudo`. Nothing runs as root before
+   both checks pass. It asks for the Telegram token and your user id, then
+   creates the `crowdsec-gram-bot` user and the allowlist and starts
+   everything.
 
-   `install` creates the `crowdsec-gram-bot` user and the allowlist, and starts
-   everything. It asks for the Telegram token and your user id. Type them at
-   the prompts: values on the command line show up in `ps` and the shell
-   history.
+   To read the script before running it:
+   `curl -fsSLO https://raw.githubusercontent.com/carvalab/crowdsec-gram-bot/main/install.sh && less install.sh && sh install.sh`
 3. Send `/help` to your bot. From then on the server installs new releases by
-   itself.
+   itself, with the same signature check.
 
-`sudo crowdsec-gram-bot install` from a newer binary upgrades the bot and its
-units and keeps your settings. `sudo crowdsec-gram-bot uninstall` removes the
+Running the same `curl` line again upgrades the bot and its units and keeps
+your settings. `sudo crowdsec-gram-bot uninstall` removes the
 bot and keeps its settings and the allowlist.
 
 ## Settings

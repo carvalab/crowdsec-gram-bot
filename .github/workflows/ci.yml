@@ -15,6 +15,7 @@ jobs:
           go-version: "1.27"
           check-latest: true
       - run: test -z "$(gofmt -l .)"
+      - run: shellcheck install.sh
       - run: go vet ./... && go vet -tags e2e ./test/e2e
       - run: go test -race ./...
   e2e:

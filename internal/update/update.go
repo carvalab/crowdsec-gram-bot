@@ -30,6 +30,10 @@ import (
 // end-to-end test can build a binary that trusts its own test key.
 var PublicKey = "OCmvuqGInMtB99Rd/1cm261kAtVWFeNaBuafHIIU6Dw="
 
+// ErrUntrusted marks a release whose signature or checksum is wrong. It is
+// never a network problem, so callers must stop, not retry or warn.
+var ErrUntrusted = errors.New("untrusted release")
+
 const (
 	sumsName      = "checksums.txt"
 	sigName       = "checksums.txt.sig"
@@ -59,9 +63,12 @@ func ParseKey(s string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(b), nil
 }
 
-// BinaryName is the raw release binary for this platform.
-func BinaryName(tag string) string {
-	return fmt.Sprintf("crowdsec-gram-bot_%s_linux_%s", strings.TrimPrefix(tag, "v"), runtime.GOARCH)
+// BinaryName is the raw release binary for this platform. It has no version
+// in it, so the latest release always has the same download URL. SmokeTest
+// checks the version the binary reports, so an old signed binary cannot be
+// passed off as a newer release.
+func BinaryName() string {
+	return "crowdsec-gram-bot_linux_" + runtime.GOARCH
 }
 
 // Newer reports whether latest is a higher semver than current. Builds that
@@ -101,7 +108,7 @@ func (u *Updater) get(ctx context.Context, url, accept string, limit int64) ([]b
 	case res.StatusCode == http.StatusOK:
 		return b, nil
 	case res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusNotFound:
-		return nil, fmt.Errorf("github %d for %s: the repo is private, so GITHUB_TOKEN needs contents:read on it", res.StatusCode, url)
+		return nil, fmt.Errorf("github %d for %s: no such release, or a private repository without GITHUB_TOKEN", res.StatusCode, url)
 	default:
 		return nil, fmt.Errorf("github %d for %s", res.StatusCode, url)
 	}
@@ -153,9 +160,9 @@ func (u *Updater) Download(ctx context.Context, rel Release) ([]byte, error) {
 		return nil, err
 	}
 	if !ed25519.Verify(u.Key, sums, sig) {
-		return nil, fmt.Errorf("release %s: bad signature on %s, refusing update", rel.Tag, sumsName)
+		return nil, fmt.Errorf("%w: release %s has a bad signature on %s", ErrUntrusted, rel.Tag, sumsName)
 	}
-	name := BinaryName(rel.Tag)
+	name := BinaryName()
 	want, err := findSum(sums, name)
 	if err != nil {
 		return nil, err
@@ -165,7 +172,7 @@ func (u *Updater) Download(ctx context.Context, rel Release) ([]byte, error) {
 		return nil, err
 	}
 	if got := sha256.Sum256(bin); !bytes.Equal(got[:], want) {
-		return nil, fmt.Errorf("checksum mismatch for %s, refusing update", name)
+		return nil, fmt.Errorf("%w: checksum mismatch for %s", ErrUntrusted, name)
 	}
 	return bin, nil
 }
@@ -176,16 +183,18 @@ func findSum(sums []byte, name string) ([]byte, error) {
 		if len(f) == 2 && f[1] == name {
 			sum, err := hex.DecodeString(f[0])
 			if err != nil || len(sum) != sha256.Size {
-				return nil, fmt.Errorf("bad checksum entry for %s", name)
+				return nil, fmt.Errorf("%w: bad checksum entry for %s", ErrUntrusted, name)
 			}
 			return sum, nil
 		}
 	}
-	return nil, fmt.Errorf("no checksum for %s", name)
+	return nil, fmt.Errorf("%w: no checksum for %s", ErrUntrusted, name)
 }
 
-// SmokeTest runs `bin version` from a temp file and checks it reports tag.
-func SmokeTest(ctx context.Context, bin []byte, tag string) error {
+// SmokeTest runs `bin version` from a temp file. The version it reports
+// must equal tag exactly and be newer than current, so an old signed binary
+// cannot be published again under a higher tag.
+func SmokeTest(ctx context.Context, bin []byte, tag, current string) error {
 	f, err := os.CreateTemp("", "crowdsec-gram-bot-new-*")
 	if err != nil {
 		return err
@@ -206,8 +215,21 @@ func SmokeTest(ctx context.Context, bin []byte, tag string) error {
 	if err != nil {
 		return fmt.Errorf("new binary does not run: %w", err)
 	}
-	if !strings.Contains(string(out), "version="+strings.TrimPrefix(tag, "v")) {
-		return fmt.Errorf("new binary reports %q, want %s", strings.TrimSpace(string(out)), tag)
+	return checkVersion(string(out), tag, current)
+}
+
+func checkVersion(out, tag, current string) error {
+	reported := ""
+	for _, f := range strings.Fields(out) {
+		if v, ok := strings.CutPrefix(f, "version="); ok {
+			reported = v
+		}
+	}
+	if reported != strings.TrimPrefix(tag, "v") {
+		return fmt.Errorf("%w: release %s holds a binary that reports version %q", ErrUntrusted, tag, reported)
+	}
+	if !Newer(current, reported) {
+		return fmt.Errorf("%w: release %s is not newer than %s", ErrUntrusted, tag, current)
 	}
 	return nil
 }

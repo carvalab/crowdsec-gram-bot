@@ -139,7 +139,7 @@ func runUpdate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := update.SmokeTest(ctx, bin, rel.Tag); err != nil {
+	if err := update.SmokeTest(ctx, bin, rel.Tag, version); err != nil {
 		return err
 	}
 	exe, err := os.Executable()

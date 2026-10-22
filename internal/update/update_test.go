@@ -49,8 +49,8 @@ func newFakeGitHub(t *testing.T, signer ed25519.PrivateKey, tamper func(map[stri
 	f := &fakeGitHub{files: map[string][]byte{}}
 	tag := "v1.2.3"
 	sum := sha256.Sum256(payload())
-	sums := []byte(hex.EncodeToString(sum[:]) + "  " + BinaryName(tag) + "\n")
-	f.files[BinaryName(tag)] = payload()
+	sums := []byte(hex.EncodeToString(sum[:]) + "  " + BinaryName() + "\n")
+	f.files[BinaryName()] = payload()
 	f.files[sumsName] = sums
 	f.files[sigName] = ed25519.Sign(signer, sums)
 	if tamper != nil {
@@ -109,7 +109,7 @@ func TestDownloadVerifiesSignatureAndChecksum(t *testing.T) {
 		t.Fatal("release signed by another key was accepted")
 	}
 	swapped := newFakeGitHub(t, priv, func(m map[string][]byte) {
-		m[BinaryName("v1.2.3")] = []byte("EVIL")
+		m[BinaryName()] = []byte("EVIL")
 	})
 	if _, err := download(t, swapped, pub); err == nil || !strings.Contains(err.Error(), "checksum") {
 		t.Fatalf("swapped tarball: %v", err)
@@ -125,5 +125,24 @@ func TestTokenNeverLeavesAPIHost(t *testing.T) {
 	_, err := u.get(context.Background(), "https://evil.example/asset", "x", 10)
 	if err == nil || !strings.Contains(err.Error(), "refusing") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestCheckVersionIsExact(t *testing.T) {
+	ok := "version=1.2.3 commit=abc date=x\n"
+	if err := checkVersion(ok, "v1.2.3", "1.2.2"); err != nil {
+		t.Fatalf("exact match refused: %v", err)
+	}
+	for _, c := range []struct{ out, tag, current string }{
+		{"version=1.2.3-rc1 commit=abc\n", "v1.2.3", "1.2.2"},
+		{"version=1.2.30 commit=abc\n", "v1.2.3", "1.2.2"},
+		{"version=1.2.3 commit=abc\n", "v1.2.30", "1.2.2"},
+		{"commit=abc\n", "v1.2.3", "1.2.2"},
+		{ok, "v1.2.3", "1.2.3"},
+		{ok, "v1.2.3", "1.3.0"},
+	} {
+		if err := checkVersion(c.out, c.tag, c.current); err == nil {
+			t.Errorf("accepted %q as %s over %s", c.out, c.tag, c.current)
+		}
 	}
 }

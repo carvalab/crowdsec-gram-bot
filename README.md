@@ -4,6 +4,14 @@ Remove your own CrowdSec ban from Telegram. When the WAF bans the IP you are
 working from, send the bot `/bans` or your IP from your phone, tap a button,
 and you are back in. No other network, no SSH, no console login.
 
+Install on the server (Ubuntu with CrowdSec), as your normal user:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/carvalab/crowdsec-gram-bot/main/install.sh | sh
+```
+
+Run the same line again to upgrade. Details are in [Install](#install).
+
 ```
 /bans           newest bans, each with 🔓 unban and ✅ allowlist buttons
 /bans 181.45    shorten the list: only IPs that start with 181.45 (any digits work)

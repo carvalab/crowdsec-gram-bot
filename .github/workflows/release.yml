@@ -1,0 +1,40 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+          check-latest: true
+      - run: go test ./...
+      - name: Check the signing key
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          RELEASE_SIGNING_PASSPHRASE: ${{ secrets.RELEASE_SIGNING_PASSPHRASE }}
+        run: |
+          umask 077
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/signing.pem"
+          pub=$(printf '%s' "$RELEASE_SIGNING_PASSPHRASE" | openssl pkey -in "$RUNNER_TEMP/signing.pem" -passin stdin -pubout -outform DER | tail -c 32 | base64) \
+            || { echo "RELEASE_SIGNING_PASSPHRASE is wrong" >&2; exit 1; }
+          grep -q "var PublicKey = \"$pub\"" internal/update/update.go || {
+            echo "RELEASE_SIGNING_KEY does not match update.PublicKey; servers would refuse this release" >&2
+            exit 1
+          }
+          echo "SIGNING_KEY_FILE=$RUNNER_TEMP/signing.pem" >> "$GITHUB_ENV"
+          echo "SIGNING_PASSPHRASE=$RELEASE_SIGNING_PASSPHRASE" >> "$GITHUB_ENV"
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

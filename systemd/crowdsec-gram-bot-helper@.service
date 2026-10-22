@@ -1,0 +1,47 @@
+[Unit]
+Description=CrowdSec Telegram unban bot, one privileged request
+Documentation=https://github.com/carvalab/crowdsec-gram-bot
+After=crowdsec.service
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/crowdsec-gram-bot helper
+EnvironmentFile=-/etc/crowdsec-gram-bot/helper.env
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+User=root
+RuntimeMaxSec=60
+CollectMode=inactive-or-failed
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/crowdsec/data
+TemporaryFileSystem=/run:ro
+BindReadOnlyPaths=-/run/systemd/resolve
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallFilter=@chown
+UMask=0077

@@ -1,0 +1,15 @@
+[Unit]
+Description=CrowdSec Telegram unban bot, privileged helper socket
+Documentation=https://github.com/carvalab/crowdsec-gram-bot
+
+[Socket]
+ListenStream=/run/crowdsec-gram-bot-helper.sock
+SocketUser=root
+SocketGroup=crowdsec-gram-bot
+SocketMode=0660
+Accept=yes
+MaxConnections=4
+MaxConnectionsPerSource=4
+
+[Install]
+WantedBy=sockets.target

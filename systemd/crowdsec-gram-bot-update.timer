@@ -1,0 +1,11 @@
+[Unit]
+Description=CrowdSec Telegram unban bot, check for a new release every 6 hours
+Documentation=https://github.com/carvalab/crowdsec-gram-bot
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

@@ -1,5 +1,0 @@
-.env
-.git
-dist/
-crowdsec-gram-bot
-*.log

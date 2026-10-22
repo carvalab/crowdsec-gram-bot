@@ -6,14 +6,30 @@ builds:
     env: [CGO_ENABLED=0]
     goos: [linux]
     goarch: [amd64, arm64]
+    flags: [-trimpath]
+    mod_timestamp: "{{.CommitTimestamp}}"
     ldflags:
-      - -s -w
-      - -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.CommitDate}}
 archives:
-  - name_template: "{{.ProjectName}}_{{trimV .Version}}_linux_{{.Arch}}"
+  - name_template: "{{.ProjectName}}_{{.Version}}_linux_{{.Arch}}"
     formats: [tar.gz]
+    builds_info:
+      mtime: "{{.CommitDate}}"
+    files:
+      - src: install.sh
+        info:
+          mtime: "{{.CommitDate}}"
+      - src: README.md
+        info:
+          mtime: "{{.CommitDate}}"
 checksum:
   name_template: checksums.txt
+signs:
+  - artifacts: checksum
+    cmd: openssl
+    args: [pkeyutl, -sign, -rawin, -inkey, "{{ .Env.SIGNING_KEY_FILE }}", -passin, stdin, -in, "${artifact}", -out, "${signature}"]
+    stdin: "{{ .Env.SIGNING_PASSPHRASE }}"
+    signature: "${artifact}.sig"
 release:
   github:
     owner: carvalab

@@ -57,10 +57,10 @@ Ubuntu's own `crowdsec` package is too old for allowlists.
    Get your numeric user id from [@userinfobot](https://t.me/userinfobot).
 2. On the server, paste this block as is. It downloads the release, checks its
    signature and checksum, and only then installs. Each step stops the rest if
-   it fails. On an ARM server, change `amd64` to `arm64` in `arch=`.
+   it fails. It picks `amd64` or `arm64` for your server by itself.
 
 ```sh
-arch=amd64 && mkdir -p ~/csgb && cd ~/csgb && \
+arch=$(dpkg --print-architecture) && mkdir -p ~/csgb && cd ~/csgb && \
 base=https://github.com/carvalab/crowdsec-gram-bot/releases/latest/download && \
 curl -fsSLO "$base/crowdsec-gram-bot_linux_$arch" && \
 curl -fsSLO "$base/checksums.txt" && \
@@ -76,7 +76,7 @@ sudo "./crowdsec-gram-bot_linux_$arch" install
 ```
 
    You must see `Signature Verified Successfully` and
-   `crowdsec-gram-bot_linux_amd64: OK` before the install starts. This check is
+   `crowdsec-gram-bot_linux_amd64: OK` (or `arm64`) before the install starts. This check is
    the one that protects you. `install` checks itself too, but a tampered
    binary could skip its own check, so that one only catches a damaged
    download. The key in the block is `PublicKey` from

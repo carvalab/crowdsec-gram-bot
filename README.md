@@ -121,23 +121,32 @@ the result with `journalctl -u crowdsec-gram-bot-update`.
 
 ## Releasing
 
-On your computer, from an up-to-date `main`:
-
 ```sh
-./release.sh v1.2.3
+git tag v1.2.3 && git push origin v1.2.3
 ```
 
-It runs the tests, asks for the key's passphrase, pushes the tag, builds
-`linux/amd64` and `linux/arm64` with goreleaser, signs `checksums.txt` and
-publishes the release. The private key stays in
-`~/.config/crowdsec-gram-bot/release-signing-key.pem`, encrypted with your
-passphrase, and never goes to GitHub. A stolen GitHub token cannot publish an
-update the servers accept, and a copied key file is useless without the
-passphrase. Keep the key file and its passphrase in your password manager. Builds are
-reproducible: the same commit gives the same checksums.
+The release workflow tests, builds `linux/amd64` and `linux/arm64`, signs
+`checksums.txt` and publishes the release. It refuses to run when the
+`RELEASE_SIGNING_KEY` secret does not match `PublicKey` in
+`internal/update/update.go`.
+
+The signing key is a repository secret. On the Free plan, GitHub gives a
+repository secret to every workflow that runs on a push, on any branch. So a
+stolen token that can push to this repository can read the key and publish an
+update that every server installs. Two things limit that:
+
+- the key is encrypted, and its passphrase is a second secret, so both must
+  leak;
+- the workflow checks that the secret matches the public key in the code.
+
+Close it properly by upgrading to GitHub Pro and moving both secrets into an
+Environment that needs your approval, with a ruleset so only you can push
+`v*` tags. Until then, protect the account: two-factor authentication, no
+extra collaborators, and no GitHub App set to "all repositories".
 
 To rotate the key, put the new public key in `internal/update/update.go` and
-`release-signing-key.pub.pem`, release once with the old key, then switch.
+`release-signing-key.pub.pem`, release once with the old secret, then switch
+both secrets.
 
 ## Logs
 

@@ -4,6 +4,14 @@ Remove your own CrowdSec ban from Telegram. When the WAF bans the IP you are
 working from, send the bot `/bans` or your IP from your phone, tap a button,
 and you are back in. No other network, no SSH, no console login.
 
+Install on the server (Ubuntu with CrowdSec), as your normal user:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/carvalab/crowdsec-gram-bot/main/install.sh | sh
+```
+
+Run the same line again to upgrade. Details are in [Install](#install).
+
 ```
 /bans           newest bans, each with 🔓 unban and ✅ allowlist buttons
 /bans 181.45    shorten the list: only IPs that start with 181.45 (any digits work)
@@ -55,43 +63,26 @@ Ubuntu's own `crowdsec` package is too old for allowlists.
 
 1. Create the bot with [@BotFather](https://t.me/BotFather) and copy its token.
    Get your numeric user id from [@userinfobot](https://t.me/userinfobot).
-2. On the server, paste this block as is. It downloads the release, checks its
-   signature and checksum, and only then installs. Each step stops the rest if
-   it fails. On an ARM server, change `amd64` to `arm64` in `arch=`.
+2. On the server, as your normal user:
 
 ```sh
-arch=amd64 && mkdir -p ~/csgb && cd ~/csgb && \
-base=https://github.com/carvalab/crowdsec-gram-bot/releases/latest/download && \
-curl -fsSLO "$base/crowdsec-gram-bot_linux_$arch" && \
-curl -fsSLO "$base/checksums.txt" && \
-curl -fsSLO "$base/checksums.txt.sig" && \
-printf '%s\n' '-----BEGIN PUBLIC KEY-----' \
-  'MCowBQYDK2VwAyEAOCmvuqGInMtB99Rd/1cm261kAtVWFeNaBuafHIIU6Dw=' \
-  '-----END PUBLIC KEY-----' > release-signing-key.pub.pem && \
-openssl pkeyutl -verify -rawin -pubin -inkey release-signing-key.pub.pem \
-  -in checksums.txt -sigfile checksums.txt.sig && \
-sha256sum --ignore-missing -c checksums.txt && \
-chmod +x "crowdsec-gram-bot_linux_$arch" && \
-sudo "./crowdsec-gram-bot_linux_$arch" install
+curl -fsSL https://raw.githubusercontent.com/carvalab/crowdsec-gram-bot/main/install.sh | sh
 ```
 
-   You must see `Signature Verified Successfully` and
-   `crowdsec-gram-bot_linux_amd64: OK` before the install starts. This check is
-   the one that protects you. `install` checks itself too, but a tampered
-   binary could skip its own check, so that one only catches a damaged
-   download. The key in the block is `PublicKey` from
-   `internal/update/update.go`. Every later update is checked by the installed
-   binary, which you have just verified.
+   [`install.sh`](install.sh) picks `amd64` or `arm64`, downloads the latest
+   release, checks its Ed25519 signature and sha256 checksum, and only then
+   runs `crowdsec-gram-bot install` with `sudo`. Nothing runs as root before
+   both checks pass. It asks for the Telegram token and your user id, then
+   creates the `crowdsec-gram-bot` user and the allowlist and starts
+   everything.
 
-   `install` creates the `crowdsec-gram-bot` user and the allowlist, and starts
-   everything. It asks for the Telegram token and your user id. Type them at
-   the prompts: values on the command line show up in `ps` and the shell
-   history.
+   To read the script before running it:
+   `curl -fsSLO https://raw.githubusercontent.com/carvalab/crowdsec-gram-bot/main/install.sh && less install.sh && sh install.sh`
 3. Send `/help` to your bot. From then on the server installs new releases by
-   itself.
+   itself, with the same signature check.
 
-`sudo crowdsec-gram-bot install` from a newer binary upgrades the bot and its
-units and keeps your settings. `sudo crowdsec-gram-bot uninstall` removes the
+Running the same `curl` line again upgrades the bot and its units and keeps
+your settings. `sudo crowdsec-gram-bot uninstall` removes the
 bot and keeps its settings and the allowlist.
 
 ## Settings

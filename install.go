@@ -106,7 +106,7 @@ func runInstall(ctx context.Context) error {
 	out, _ := exec.Command(binPath, "version").Output()
 	fmt.Printf("installed %s", out)
 	fmt.Printf("  bot:      systemctl status %s   (logs: journalctl -u %s)\n", botUnit, botUnit)
-	fmt.Printf("  helper:   journalctl -u '%s-helper@*'\n", botUnit)
+	fmt.Println("  helper:   journalctl -u 'crowdsec-gram-bot-helper@*'")
 	fmt.Println("  updates:  automatic, checked every 6 hours (journalctl -u crowdsec-gram-bot-update)")
 	fmt.Printf("  settings: %s/\n", confDir)
 	return nil

@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/go-telegram/bot v1.27.0
 	github.com/minio/selfupdate v0.6.0
+	golang.org/x/mod v0.42.0
 )
 
 require (

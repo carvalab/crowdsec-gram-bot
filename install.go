@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,7 +47,15 @@ func runInstall(ctx context.Context) error {
 	if err := needCrowdSec(ctx, minCrowd); err != nil {
 		return err
 	}
-	switch err := verifySelf(ctx); {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	bin, err := os.ReadFile(exe)
+	if err != nil {
+		return err
+	}
+	switch err := verifySelf(ctx, bin); {
 	case err == nil:
 	case errors.Is(err, errNoRelease):
 		fmt.Printf("warning: %s\n", err)
@@ -72,11 +82,7 @@ func runInstall(ctx context.Context) error {
 	if err := ensureAllowlist(ctx); err != nil {
 		return err
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	if err := copyFile(exe, binPath, 0o755); err != nil {
+	if err := writeFile(binPath, bin, 0o755); err != nil {
 		return fmt.Errorf("install binary: %w", err)
 	}
 	if err := runUnits(ctx); err != nil {
@@ -94,20 +100,14 @@ func runInstall(ctx context.Context) error {
 	if err := systemctl(ctx, "restart", botUnit); err != nil {
 		return err
 	}
-	updates := "off (no GITHUB_TOKEN in " + confDir + "/update.env)"
-	if hasKey(confDir+"/update.env", "GITHUB_TOKEN", ".") {
-		if err := systemctl(ctx, "enable", "--now", "crowdsec-gram-bot-update.timer"); err != nil {
-			return err
-		}
-		updates = "on, every 6 hours"
-	} else {
-		_ = systemctl(ctx, "disable", "--now", "crowdsec-gram-bot-update.timer")
+	if err := systemctl(ctx, "enable", "--now", "crowdsec-gram-bot-update.timer"); err != nil {
+		return err
 	}
 	out, _ := exec.Command(binPath, "version").Output()
 	fmt.Printf("installed %s", out)
 	fmt.Printf("  bot:      systemctl status %s   (logs: journalctl -u %s)\n", botUnit, botUnit)
 	fmt.Printf("  helper:   journalctl -u '%s-helper@*'\n", botUnit)
-	fmt.Printf("  updates:  %s\n", updates)
+	fmt.Println("  updates:  automatic, checked every 6 hours (journalctl -u crowdsec-gram-bot-update)")
 	fmt.Printf("  settings: %s/\n", confDir)
 	return nil
 }
@@ -125,8 +125,10 @@ func runUninstall(ctx context.Context) error {
 	os.Remove(binPath)
 	os.Remove(binPath + ".old")
 	os.RemoveAll("/var/lib/crowdsec-gram-bot")
-	if err := exec.CommandContext(ctx, "userdel", botUser).Run(); err != nil {
-		return fmt.Errorf("userdel %s: %w", botUser, err)
+	if exec.CommandContext(ctx, "id", "-u", botUser).Run() == nil {
+		if err := exec.CommandContext(ctx, "userdel", botUser).Run(); err != nil {
+			return fmt.Errorf("userdel %s: %w", botUser, err)
+		}
 	}
 	fmt.Printf("removed. Settings are kept in %s; delete them with: rm -r %s\n", confDir, confDir)
 	fmt.Println("The CrowdSec allowlist is kept; delete it with: cscli allowlists delete <name>")
@@ -136,11 +138,13 @@ func runUninstall(ctx context.Context) error {
 // errNoRelease means the signature could not be checked, not that it failed.
 var errNoRelease = errors.New("no release")
 
-// verifySelf checks this binary against the signed checksum of the release
+// verifySelf checks bin, the bytes of this binary, against the signed release
 // it says it is. A file that was changed after the download refuses to
-// install. It returns errNoRelease when no release can be fetched, and the
-// caller warns instead of stopping: the updater checks every later update.
-func verifySelf(ctx context.Context) error {
+// install. The caller installs exactly these bytes, so the file cannot be
+// swapped between the check and the copy. It returns errNoRelease when no
+// release can be fetched; the caller warns, and the updater checks every
+// later update.
+func verifySelf(ctx context.Context, bin []byte) error {
 	if !semver.IsValid("v" + strings.TrimPrefix(version, "v")) {
 		return fmt.Errorf("%w: this build (%s) is not a release", errNoRelease, version)
 	}
@@ -161,18 +165,13 @@ func verifySelf(ctx context.Context) error {
 		return fmt.Errorf("this binary is %s but the latest release is %s: download the latest one", version, rel.Tag)
 	}
 	want, err := u.Download(ctx, rel)
+	if errors.Is(err, update.ErrUntrusted) {
+		return fmt.Errorf("refusing to install: %w", err)
+	}
 	if err != nil {
 		return fmt.Errorf("%w: %v", errNoRelease, err)
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	have, err := os.ReadFile(exe)
-	if err != nil {
-		return err
-	}
-	if string(have) != string(want) {
+	if !bytes.Equal(bin, want) {
 		return errors.New("this binary does not match its signed release: refusing to install it")
 	}
 	fmt.Printf("signature and checksum match release %s\n", rel.Tag)
@@ -249,18 +248,12 @@ func configure(ctx context.Context) error {
 	if token == "" {
 		return errors.New("TELEGRAM_TOKEN is required")
 	}
-	id, err := setting(confDir+"/bot.env", "TELEGRAM_ADMIN_ID", "[0-9]", "Your numeric Telegram user id (ask @userinfobot): ", false)
+	id, err := setting(confDir+"/bot.env", "TELEGRAM_ADMIN_ID", "[0-9]+$", "Your numeric Telegram user id (ask @userinfobot): ", false)
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Sscanf(id, "%d", new(int64)); err != nil || id == "" || id == "0" {
-		return errors.New("TELEGRAM_ADMIN_ID must be a number")
-	}
-	fmt.Println("Auto-updates need a GitHub token, because this repo is private.")
-	fmt.Println("Make a fine-grained token: only this repository, permission Contents: read-only.")
-	fmt.Println("Leave it empty to update by hand later: sudo crowdsec-gram-bot install")
-	if _, err := setting(confDir+"/update.env", "GITHUB_TOKEN", ".", "GitHub token (or empty): ", true); err != nil {
-		return err
+	if n, err := strconv.ParseInt(id, 10, 64); err != nil || n <= 0 {
+		return errors.New("TELEGRAM_ADMIN_ID must be your numeric Telegram user id")
 	}
 	helper := confDir + "/helper.env"
 	if _, err := os.Stat(helper); errors.Is(err, os.ErrNotExist) {
@@ -312,8 +305,6 @@ func savedValue(file, key, present string) string {
 	}
 	return ""
 }
-
-func hasKey(file, key, present string) bool { return savedValue(file, key, present) != "" }
 
 func setValue(file, key, value string) error {
 	b, _ := os.ReadFile(file)
@@ -378,22 +369,15 @@ func ensureAllowlist(ctx context.Context) error {
 	return nil
 }
 
-func copyFile(src, dst string, mode os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
+// writeFile replaces dst with data in one rename, so a running binary is
+// never seen half written.
+func writeFile(dst string, data []byte, mode os.FileMode) error {
+	tmp := dst + ".new"
+	if err := os.WriteFile(tmp, data, mode); err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.OpenFile(dst+".new", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
-	if err != nil {
+	if err := os.Chmod(tmp, mode); err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return os.Rename(dst+".new", dst)
+	return os.Rename(tmp, dst)
 }

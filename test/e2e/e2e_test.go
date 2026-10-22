@@ -181,7 +181,7 @@ func pubKey(t *testing.T, pem string) string {
 // the way the release workflow signs it: openssl pkeyutl over checksums.txt.
 func (e *env) release(version string, bin []byte, signKey string) {
 	e.t.Helper()
-	asset := fmt.Sprintf("crowdsec-gram-bot_%s_linux_%s", version, runtime.GOARCH)
+	asset := "crowdsec-gram-bot_linux_" + runtime.GOARCH
 	rel := filepath.Join(e.dir, "release-"+version)
 	os.MkdirAll(rel, 0o755)
 	sum := sha256.Sum256(bin)
@@ -253,8 +253,18 @@ func TestEndToEnd(t *testing.T) {
 		e.t = t
 		e.mustSh("cscli machines add telegram-bot --auto -f /dev/null")
 		e.mustSh(fmt.Sprintf("printf 'TELEGRAM_TOKEN=%s\\nTELEGRAM_ADMIN_ID=%d\\nCROWDSEC_MACHINE_PASSWORD=x\\n' > /etc/crowdsec-gram-bot.env", tgToken, admin))
-		out := e.mustSh("GITHUB_TOKEN=" + ghToken + " /opt/csgb/crowdsec-gram-bot install </dev/null")
-		for _, want := range []string{"moving them", "deleted the old 'telegram-bot'", "installed version=1.0.0", "updates:  on"} {
+		staged, _ := os.ReadFile(filepath.Join(stage, "crowdsec-gram-bot"))
+		e.release("1.0.0", staged, key)
+		gh := "GITHUB_API_URL=http://127.0.0.1:8081 GITHUB_REPO=o/r GITHUB_TOKEN=" + ghToken + " "
+		e.mustSh("cp /opt/csgb/crowdsec-gram-bot /tmp/tampered && printf x >> /tmp/tampered")
+		if out, err := e.sh(gh + "/tmp/tampered install </dev/null"); err == nil || !strings.Contains(out, "does not match its signed release") {
+			t.Fatalf("a changed binary was installed: err=%v\n%s", err, out)
+		}
+		if out, _ := e.sh("ls /usr/local/bin/crowdsec-gram-bot"); !strings.Contains(out, "No such file") {
+			t.Fatalf("the refused binary was copied: %s", out)
+		}
+		out := e.mustSh(gh + "/opt/csgb/crowdsec-gram-bot install </dev/null")
+		for _, want := range []string{"signature and checksum match release v1.0.0", "moving them", "deleted the old 'telegram-bot'", "installed version=1.0.0", "updates:  automatic"} {
 			if !strings.Contains(out, want) {
 				t.Fatalf("install output lacks %q:\n%s", want, out)
 			}
@@ -266,7 +276,7 @@ func TestEndToEnd(t *testing.T) {
 			t.Fatal("old CrowdSec machine password was carried over")
 		}
 		e.mustSh("printf 'TELEGRAM_API_URL=http://127.0.0.1:8081\\n' >> /etc/crowdsec-gram-bot/bot.env")
-		e.mustSh("printf 'GITHUB_API_URL=http://127.0.0.1:8081\\nGITHUB_REPO=o/r\\n' >> /etc/crowdsec-gram-bot/update.env")
+		e.mustSh("printf 'GITHUB_API_URL=http://127.0.0.1:8081\\nGITHUB_REPO=o/r\\nGITHUB_TOKEN=" + ghToken + "\\n' >> /etc/crowdsec-gram-bot/update.env")
 		e.mustSh("systemctl restart crowdsec-gram-bot")
 		waitFor(t, "the bot to register its commands", 30*time.Second, func() bool {
 			for _, c := range e.sent() {
@@ -283,7 +293,7 @@ func TestEndToEnd(t *testing.T) {
 		if out := e.mustSh("stat -c '%A %U %G' /run/crowdsec-gram-bot-helper.sock"); strings.TrimSpace(out) != "srw-rw---- root crowdsec-gram-bot" {
 			t.Fatalf("socket perms %q", out)
 		}
-		if out := e.mustSh("stat -c '%a %U' /etc/crowdsec-gram-bot /etc/crowdsec-gram-bot/bot.env /etc/crowdsec-gram-bot/update.env"); out != "700 root\n600 root\n600 root\n" {
+		if out := e.mustSh("stat -c '%a %U' /etc/crowdsec-gram-bot /etc/crowdsec-gram-bot/bot.env /etc/crowdsec-gram-bot/helper.env"); out != "700 root\n600 root\n600 root\n" {
 			t.Fatalf("settings perms %q", out)
 		}
 		e.mustSh("systemctl is-active crowdsec-gram-bot-update.timer crowdsec-gram-bot-helper.socket crowdsec-gram-bot")
@@ -401,7 +411,7 @@ func TestEndToEnd(t *testing.T) {
 		}
 		e.mustSh("sed -i 's/^GITHUB_TOKEN=.*/GITHUB_TOKEN=wrong/' /etc/crowdsec-gram-bot/update.env")
 		e.release("1.1.0", good, key)
-		if out, err := update(); err == nil || !strings.Contains(out, "contents:read") {
+		if out, err := update(); err == nil || !strings.Contains(out, "GITHUB_TOKEN") {
 			t.Fatalf("wrong token: err=%v\n%s", err, out)
 		}
 		e.mustSh("sed -i 's/^GITHUB_TOKEN=.*/GITHUB_TOKEN=" + ghToken + "/' /etc/crowdsec-gram-bot/update.env")

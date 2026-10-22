@@ -7,7 +7,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/crowdsec-gram-bot update
-EnvironmentFile=/etc/crowdsec-gram-bot/update.env
+EnvironmentFile=-/etc/crowdsec-gram-bot/update.env
 User=root
 TimeoutStartSec=15min
 

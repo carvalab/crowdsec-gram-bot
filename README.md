@@ -55,34 +55,40 @@ Ubuntu's own `crowdsec` package is too old for allowlists.
 
 1. Create the bot with [@BotFather](https://t.me/BotFather) and copy its token.
    Get your numeric user id from [@userinfobot](https://t.me/userinfobot).
-2. Auto-updates need a GitHub token, because this repository is private. Make
-   a fine-grained token: resource owner `carvalab`, only this repository,
-   permission **Contents: read-only**. You can skip it and update by hand.
-3. On the server (use `arm64` instead of `amd64` on an ARM server):
-   ```sh
-   curl -fsSL -o crowdsec-gram-bot \
-     https://github.com/carvalab/crowdsec-gram-bot/releases/latest/download/crowdsec-gram-bot_linux_amd64
-   chmod +x crowdsec-gram-bot
-   sudo ./crowdsec-gram-bot install
-   ```
-   `install` checks the binary against its signed release before it copies
-   anything, creates the `crowdsec-gram-bot` user and the allowlist, and starts
-   everything. It asks for the Telegram token, your user id and the GitHub
-   token. Type them at the prompts: values on the command line show up in `ps`
-   and the shell history.
-4. Send `/help` to your bot.
-
-To check the download yourself before the first install, also fetch
-`checksums.txt` and `checksums.txt.sig` and run:
+2. On the server, paste this block as is. It downloads the release, checks its
+   signature and checksum, and only then installs. Each step stops the rest if
+   it fails. On an ARM server, change `amd64` to `arm64` in `arch=`.
 
 ```sh
+arch=amd64 && mkdir -p ~/csgb && cd ~/csgb && \
+base=https://github.com/carvalab/crowdsec-gram-bot/releases/latest/download && \
+curl -fsSLO "$base/crowdsec-gram-bot_linux_$arch" && \
+curl -fsSLO "$base/checksums.txt" && \
+curl -fsSLO "$base/checksums.txt.sig" && \
+printf '%s\n' '-----BEGIN PUBLIC KEY-----' \
+  'MCowBQYDK2VwAyEAOCmvuqGInMtB99Rd/1cm261kAtVWFeNaBuafHIIU6Dw=' \
+  '-----END PUBLIC KEY-----' > release-signing-key.pub.pem && \
 openssl pkeyutl -verify -rawin -pubin -inkey release-signing-key.pub.pem \
-  -in checksums.txt -sigfile checksums.txt.sig
-grep linux_amd64 checksums.txt | sha256sum -c
+  -in checksums.txt -sigfile checksums.txt.sig && \
+sha256sum --ignore-missing -c checksums.txt && \
+chmod +x "crowdsec-gram-bot_linux_$arch" && \
+sudo "./crowdsec-gram-bot_linux_$arch" install
 ```
 
-`release-signing-key.pub.pem` is in this repository. Later updates are checked
-automatically.
+   You must see `Signature Verified Successfully` and
+   `crowdsec-gram-bot_linux_amd64: OK` before the install starts. This check is
+   the one that protects you. `install` checks itself too, but a tampered
+   binary could skip its own check, so that one only catches a damaged
+   download. The key in the block is `PublicKey` from
+   `internal/update/update.go`. Every later update is checked by the installed
+   binary, which you have just verified.
+
+   `install` creates the `crowdsec-gram-bot` user and the allowlist, and starts
+   everything. It asks for the Telegram token and your user id. Type them at
+   the prompts: values on the command line show up in `ps` and the shell
+   history.
+3. Send `/help` to your bot. From then on the server installs new releases by
+   itself.
 
 `sudo crowdsec-gram-bot install` from a newer binary upgrades the bot and its
 units and keeps your settings. `sudo crowdsec-gram-bot uninstall` removes the
@@ -91,13 +97,13 @@ bot and keeps its settings and the allowlist.
 ## Settings
 
 All in `/etc/crowdsec-gram-bot/` (root only, mode 0600). Each unit reads only
-its own file, so the internet-facing bot never sees the GitHub token.
+its own file.
 
 | File | Keys |
 | --- | --- |
 | `bot.env` | `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_ID` |
 | `helper.env` | `ALLOWLIST_NAME` (default `telegram-bot`), `ALLOWLIST_TTL` (default `90d`, or a duration like `36h`) |
-| `update.env` | `GITHUB_TOKEN`, and optionally `GITHUB_REPO` (default `carvalab/crowdsec-gram-bot`) |
+| `update.env` | optional: `GITHUB_REPO` (default `carvalab/crowdsec-gram-bot`), and `GITHUB_TOKEN` only if you point it at a private fork |
 
 After changing a file: `sudo systemctl restart crowdsec-gram-bot`.
 
@@ -107,7 +113,8 @@ After changing a file: `sudo systemctl restart crowdsec-gram-bot`.
 hours. A release is installed only when all of these hold:
 
 - `checksums.txt` has a valid Ed25519 signature from the key built into the
-  binary, so a stolen GitHub token alone cannot push code to the server;
+  binary, so whoever controls a GitHub release still cannot push code to the
+  server without that key;
 - the tarball matches its checksum;
 - the new binary runs and reports the expected version;
 - after installing its units and restarting, the bot is still up 30 seconds
@@ -128,28 +135,23 @@ the result with `journalctl -u crowdsec-gram-bot-update`.
 git tag v1.2.3 && git push origin v1.2.3
 ```
 
-The release workflow tests, builds `linux/amd64` and `linux/arm64`, signs
-`checksums.txt` and publishes the release. It refuses to run when the
-`RELEASE_SIGNING_KEY` secret does not match `PublicKey` in
-`internal/update/update.go`.
+The release workflow tests, then waits for your approval in the `release`
+environment (Actions tab, or the GitHub app). Only after you approve does it
+get the signing key, build `linux/amd64` and `linux/arm64`, sign
+`checksums.txt` and publish. It refuses to run when the key does not match
+`PublicKey` in `internal/update/update.go`.
 
-The signing key is a repository secret. On the Free plan, GitHub gives a
-repository secret to every workflow that runs on a push, on any branch. So a
-stolen token that can push to this repository can read the key and publish an
-update that every server installs. Two things limit that:
+What protects the key:
 
-- the key is encrypted, and its passphrase is a second secret, so both must
-  leak;
-- the workflow checks that the secret matches the public key in the code.
-
-Close it properly by upgrading to GitHub Pro and moving both secrets into an
-Environment that needs your approval, with a ruleset so only you can push
-`v*` tags. Until then, protect the account: two-factor authentication, no
-extra collaborators, and no GitHub App set to "all repositories".
+- it lives only in the `release` environment, which runs only for `v*` tags and
+  only after you approve, so other branches and workflows never see it;
+- only you can create `v*` tags;
+- the key is encrypted, and its passphrase is a second secret;
+- the signing step is the only one that receives them.
 
 To rotate the key, put the new public key in `internal/update/update.go` and
-`release-signing-key.pub.pem`, release once with the old secret, then switch
-both secrets.
+`release-signing-key.pub.pem`, release once with the old key, then replace both
+environment secrets.
 
 ## Logs
 

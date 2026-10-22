@@ -12,6 +12,7 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.CommitDate}}
 archives:
   - formats: [binary]
+    name_template: "{{ .ProjectName }}_linux_{{ .Arch }}"
 checksum:
   name_template: checksums.txt
 signs:

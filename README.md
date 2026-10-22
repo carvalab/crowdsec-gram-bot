@@ -6,11 +6,14 @@ and you are back in. No other network, no SSH, no console login.
 
 ```
 /bans           newest bans, each with 🔓 unban and ✅ allowlist buttons
-/bans 181.45    only IPs that start with 181.45
-/unban 1.2.3.4  remove every ban on that IP, including a range ban around it
+/bans 181.45    shorten the list: only IPs that start with 181.45 (any digits work)
+/unban 1.2.3.4  remove every ban on that IP, from any country, including a range ban around it
 /allow 1.2.3.4  remove the bans and allowlist the IP for 90 days
 1.2.3.4         just the IP: the bot asks which of the two
 ```
+
+Any IP works, wherever you are. The bot checks your Telegram account, not your
+location. The `181.45` above is only an example of narrowing a long list.
 
 The allowlist is CrowdSec's own (`cscli allowlists`, CrowdSec 1.6.8 or newer).
 It stops new bans on the IP and lets its requests skip the AppSec WAF.

@@ -52,45 +52,38 @@ Ubuntu's own `crowdsec` package is too old for allowlists.
 
 1. Create the bot with [@BotFather](https://t.me/BotFather) and copy its token.
    Get your numeric user id from [@userinfobot](https://t.me/userinfobot).
-2. For auto-updates, create a GitHub fine-grained token: resource owner
-   `carvalab`, only this repository, permission **Contents: read-only**.
-3. Download a release on your computer, check its signature, and copy it to
-   the server (use `arm64` instead of `amd64` on an ARM server):
+2. Auto-updates need a GitHub token, because this repository is private. Make
+   a fine-grained token: resource owner `carvalab`, only this repository,
+   permission **Contents: read-only**. You can skip it and update by hand.
+3. On the server (use `arm64` instead of `amd64` on an ARM server):
    ```sh
-   gh release download -R carvalab/crowdsec-gram-bot -p '*linux_amd64.tar.gz' -p 'checksums.txt*'
-   openssl pkeyutl -verify -rawin -pubin -inkey release-signing-key.pub.pem \
-     -in checksums.txt -sigfile checksums.txt.sig
-   sha256sum --ignore-missing -c checksums.txt
-   scp crowdsec-gram-bot_*_linux_amd64.tar.gz server:
+   curl -fsSL -o crowdsec-gram-bot \
+     https://github.com/carvalab/crowdsec-gram-bot/releases/latest/download/crowdsec-gram-bot_linux_amd64
+   chmod +x crowdsec-gram-bot
+   sudo ./crowdsec-gram-bot install
    ```
-   Both checks must pass: `Signature Verified Successfully` and `OK`.
-   `release-signing-key.pub.pem` is in this repository.
-4. On the server:
-   ```sh
-   mkdir crowdsec-gram-bot && tar xzf crowdsec-gram-bot_*_linux_amd64.tar.gz -C crowdsec-gram-bot
-   cd crowdsec-gram-bot && sudo ./install.sh
-   ```
-   It asks for the Telegram token, your user id and the GitHub token, creates
-   the `crowdsec-gram-bot` user and the allowlist, and starts everything. Type
-   the tokens at the prompts rather than on the command line, where they would
-   show up in `ps` and the shell history.
-5. Send `/help` to your bot.
+   `install` checks the binary against its signed release before it copies
+   anything, creates the `crowdsec-gram-bot` user and the allowlist, and starts
+   everything. It asks for the Telegram token, your user id and the GitHub
+   token. Type them at the prompts: values on the command line show up in `ps`
+   and the shell history.
+4. Send `/help` to your bot.
 
-Upgrading from the first version of this bot (the one with
-`CROWDSEC_MACHINE_LOGIN` settings): run `sudo ./install.sh` from the new
-release. Do not use that version's `update` command; it cannot set up the
-helper. The installer moves your Telegram settings and deletes the
-`telegram-bot` CrowdSec machine account, which is no longer needed.
+To check the download yourself before the first install, also fetch
+`checksums.txt` and `checksums.txt.sig` and run:
 
-The helper may only reach the network on localhost. If `cscli` talks to LAPI,
-or CrowdSec keeps its PostgreSQL or MySQL database, on another address,
-`install.sh` warns, and you can allow that address with
-`systemctl edit crowdsec-gram-bot-helper@.service`.
+```sh
+openssl pkeyutl -verify -rawin -pubin -inkey release-signing-key.pub.pem \
+  -in checksums.txt -sigfile checksums.txt.sig
+grep linux_amd64 checksums.txt | sha256sum -c
+```
 
-The systemd units are built into the binary (`crowdsec-gram-bot units`), so
-they always match its version. Running `install.sh` again upgrades both and
-keeps your settings. `sudo ./install.sh --uninstall` removes the bot and keeps its
-settings and the allowlist.
+`release-signing-key.pub.pem` is in this repository. Later updates are checked
+automatically.
+
+`sudo crowdsec-gram-bot install` from a newer binary upgrades the bot and its
+units and keeps your settings. `sudo crowdsec-gram-bot uninstall` removes the
+bot and keeps its settings and the allowlist.
 
 ## Settings
 
@@ -163,7 +156,7 @@ go test -tags e2e -v -timeout 20m ./test/e2e
 ```
 
 The end-to-end test boots Ubuntu 24.04 with systemd in Docker, installs
-CrowdSec from apt and runs the real `install.sh`. Only Telegram and GitHub are
+CrowdSec from apt and runs the real `install` command. Only Telegram and GitHub are
 faked (`test/e2e/fakeapi`). It covers strangers being ignored, the socket
 refusing other users and bad requests, unban and allowlist through the real
 `cscli`, the token staying out of the journal, signed updates, rejected

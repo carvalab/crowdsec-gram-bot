@@ -11,17 +11,7 @@ builds:
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.CommitDate}}
 archives:
-  - name_template: "{{.ProjectName}}_{{.Version}}_linux_{{.Arch}}"
-    formats: [tar.gz]
-    builds_info:
-      mtime: "{{.CommitDate}}"
-    files:
-      - src: install.sh
-        info:
-          mtime: "{{.CommitDate}}"
-      - src: README.md
-        info:
-          mtime: "{{.CommitDate}}"
+  - formats: [binary]
 checksum:
   name_template: checksums.txt
 signs:

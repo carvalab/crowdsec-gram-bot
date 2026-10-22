@@ -2,9 +2,11 @@
 //
 //	bot      Telegram daemon, runs as the unprivileged crowdsec-gram-bot user
 //	helper   one privileged request on the socket systemd passes as stdin
-//	update   install the newest signed release, run as root by a timer
-//	units    install the systemd units built into this binary, as root
-//	version  print the build version
+//	install    set this host up, run as root
+//	uninstall  remove the bot, keep its settings
+//	update     install the newest signed release, run as root by a timer
+//	units      install the systemd units built into this binary, as root
+//	version    print the build version
 package main
 
 import (
@@ -37,7 +39,7 @@ const botUnit = "crowdsec-gram-bot.service"
 func main() {
 	log.SetFlags(0)
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: crowdsec-gram-bot bot|helper|update|units|version")
+		fmt.Fprintln(os.Stderr, "usage: crowdsec-gram-bot bot|helper|install|uninstall|update|units|version")
 		os.Exit(2)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -50,12 +52,16 @@ func main() {
 		err = runBot(ctx)
 	case "helper":
 		err = runHelper(ctx)
+	case "install":
+		err = runInstall(ctx)
+	case "uninstall":
+		err = runUninstall(ctx)
 	case "update":
 		err = runUpdate(ctx)
 	case "units":
 		err = runUnits(ctx)
 	default:
-		fmt.Fprintln(os.Stderr, "usage: crowdsec-gram-bot bot|helper|update|units|version")
+		fmt.Fprintln(os.Stderr, "usage: crowdsec-gram-bot bot|helper|install|uninstall|update|units|version")
 		os.Exit(2)
 	}
 	if err != nil {

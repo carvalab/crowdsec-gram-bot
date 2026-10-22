@@ -4,9 +4,7 @@
 package update
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -61,9 +59,9 @@ func ParseKey(s string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(b), nil
 }
 
-// AssetName is the release tarball for this platform.
-func AssetName(tag string) string {
-	return fmt.Sprintf("crowdsec-gram-bot_%s_linux_%s.tar.gz", strings.TrimPrefix(tag, "v"), runtime.GOARCH)
+// BinaryName is the raw release binary for this platform.
+func BinaryName(tag string) string {
+	return fmt.Sprintf("crowdsec-gram-bot_%s_linux_%s", strings.TrimPrefix(tag, "v"), runtime.GOARCH)
 }
 
 // Newer reports whether latest is a higher semver than current. Builds that
@@ -157,19 +155,19 @@ func (u *Updater) Download(ctx context.Context, rel Release) ([]byte, error) {
 	if !ed25519.Verify(u.Key, sums, sig) {
 		return nil, fmt.Errorf("release %s: bad signature on %s, refusing update", rel.Tag, sumsName)
 	}
-	name := AssetName(rel.Tag)
+	name := BinaryName(rel.Tag)
 	want, err := findSum(sums, name)
 	if err != nil {
 		return nil, err
 	}
-	tarball, err := u.asset(ctx, rel, name, maxAssetBytes)
+	bin, err := u.asset(ctx, rel, name, maxAssetBytes)
 	if err != nil {
 		return nil, err
 	}
-	if got := sha256.Sum256(tarball); !bytes.Equal(got[:], want) {
+	if got := sha256.Sum256(bin); !bytes.Equal(got[:], want) {
 		return nil, fmt.Errorf("checksum mismatch for %s, refusing update", name)
 	}
-	return extractBinary(bytes.NewReader(tarball))
+	return bin, nil
 }
 
 func findSum(sums []byte, name string) ([]byte, error) {
@@ -184,35 +182,6 @@ func findSum(sums []byte, name string) ([]byte, error) {
 		}
 	}
 	return nil, fmt.Errorf("no checksum for %s", name)
-}
-
-func extractBinary(r io.Reader) ([]byte, error) {
-	gz, err := gzip.NewReader(r)
-	if err != nil {
-		return nil, fmt.Errorf("gunzip: %w", err)
-	}
-	defer gz.Close()
-	tr := tar.NewReader(gz)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			return nil, errors.New("no crowdsec-gram-bot binary in archive")
-		}
-		if err != nil {
-			return nil, fmt.Errorf("untar: %w", err)
-		}
-		if hdr.Typeflag != tar.TypeReg || hdr.Name != "crowdsec-gram-bot" {
-			continue
-		}
-		b, err := io.ReadAll(io.LimitReader(tr, maxAssetBytes+1))
-		if err != nil {
-			return nil, fmt.Errorf("read binary: %w", err)
-		}
-		if len(b) > maxAssetBytes {
-			return nil, fmt.Errorf("binary is larger than %d MiB", maxAssetBytes>>20)
-		}
-		return b, nil
-	}
 }
 
 // SmokeTest runs `bin version` from a temp file and checks it reports tag.

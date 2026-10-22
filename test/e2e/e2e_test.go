@@ -1,16 +1,14 @@
 //go:build e2e
 
 // End-to-end test on a real Ubuntu host: systemd as PID 1, CrowdSec from
-// apt, the real install.sh and units. Only Telegram and GitHub are faked.
+// apt and the real install command. Only Telegram and GitHub are faked.
 //
 //	docker build -t csgb-e2e:ubuntu-24.04 test/e2e   (needs internet for apt)
 //	go test -tags e2e -v -timeout 20m ./test/e2e
 package e2e
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -183,18 +181,11 @@ func pubKey(t *testing.T, pem string) string {
 // the way the release workflow signs it: openssl pkeyutl over checksums.txt.
 func (e *env) release(version string, bin []byte, signKey string) {
 	e.t.Helper()
-	asset := fmt.Sprintf("crowdsec-gram-bot_%s_linux_%s.tar.gz", version, runtime.GOARCH)
-	var tb bytes.Buffer
-	gz := gzip.NewWriter(&tb)
-	tw := tar.NewWriter(gz)
-	tw.WriteHeader(&tar.Header{Name: "crowdsec-gram-bot", Mode: 0o755, Size: int64(len(bin)), Typeflag: tar.TypeReg})
-	tw.Write(bin)
-	tw.Close()
-	gz.Close()
+	asset := fmt.Sprintf("crowdsec-gram-bot_%s_linux_%s", version, runtime.GOARCH)
 	rel := filepath.Join(e.dir, "release-"+version)
 	os.MkdirAll(rel, 0o755)
-	sum := sha256.Sum256(tb.Bytes())
-	os.WriteFile(filepath.Join(rel, asset), tb.Bytes(), 0o644)
+	sum := sha256.Sum256(bin)
+	os.WriteFile(filepath.Join(rel, asset), bin, 0o644)
 	os.WriteFile(filepath.Join(rel, "checksums.txt"), []byte(hex.EncodeToString(sum[:])+"  "+asset+"\n"), 0o644)
 	must(e.t, "openssl", "pkeyutl", "-sign", "-rawin", "-inkey", signKey, "-in", filepath.Join(rel, "checksums.txt"), "-out", filepath.Join(rel, "checksums.txt.sig"))
 	var assets []string
@@ -227,7 +218,6 @@ func TestEndToEnd(t *testing.T) {
 	os.MkdirAll(stage, 0o755)
 	e.build(filepath.Join(stage, "crowdsec-gram-bot"), "1.0.0", pub)
 	e.build(filepath.Join(e.dir, "v1.1.0"), "1.1.0", pub)
-	must(t, "cp", "../../install.sh", stage)
 	fake := exec.Command("go", "build", "-o", filepath.Join(e.dir, "fakeapi"), "./fakeapi")
 	fake.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux")
 	if out, err := fake.CombinedOutput(); err != nil {
@@ -263,7 +253,7 @@ func TestEndToEnd(t *testing.T) {
 		e.t = t
 		e.mustSh("cscli machines add telegram-bot --auto -f /dev/null")
 		e.mustSh(fmt.Sprintf("printf 'TELEGRAM_TOKEN=%s\\nTELEGRAM_ADMIN_ID=%d\\nCROWDSEC_MACHINE_PASSWORD=x\\n' > /etc/crowdsec-gram-bot.env", tgToken, admin))
-		out := e.mustSh("GITHUB_TOKEN=" + ghToken + " /opt/csgb/install.sh </dev/null")
+		out := e.mustSh("GITHUB_TOKEN=" + ghToken + " /opt/csgb/crowdsec-gram-bot install </dev/null")
 		for _, want := range []string{"moving them", "deleted the old 'telegram-bot'", "installed version=1.0.0", "updates:  on"} {
 			if !strings.Contains(out, want) {
 				t.Fatalf("install output lacks %q:\n%s", want, out)
@@ -452,7 +442,7 @@ func TestEndToEnd(t *testing.T) {
 
 	t.Run("uninstall", func(t *testing.T) {
 		e.t = t
-		e.mustSh("/opt/csgb/install.sh --uninstall")
+		e.mustSh("/opt/csgb/crowdsec-gram-bot uninstall")
 		out, _ := e.sh("systemctl is-active crowdsec-gram-bot; ls /usr/local/bin/crowdsec-gram-bot /etc/systemd/system/crowdsec-gram-bot* /var/lib/crowdsec-gram-bot; id crowdsec-gram-bot")
 		if strings.HasPrefix(out, "active") || !strings.Contains(out, "no such user") || strings.Count(out, "No such file") != 3 {
 			t.Fatalf("leftovers after uninstall:\n%s", out)

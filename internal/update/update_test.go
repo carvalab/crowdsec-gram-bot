@@ -1,9 +1,6 @@
 package update
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -39,21 +36,7 @@ func TestShippedKeyParses(t *testing.T) {
 	}
 }
 
-func tarball(t *testing.T, files map[string]string) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for name, body := range files {
-		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
-			t.Fatal(err)
-		}
-		tw.Write([]byte(body))
-	}
-	tw.Close()
-	gz.Close()
-	return buf.Bytes()
-}
+func payload() []byte { return []byte("NEWBINARY") }
 
 type fakeGitHub struct {
 	srv      *httptest.Server
@@ -65,10 +48,9 @@ func newFakeGitHub(t *testing.T, signer ed25519.PrivateKey, tamper func(map[stri
 	t.Helper()
 	f := &fakeGitHub{files: map[string][]byte{}}
 	tag := "v1.2.3"
-	tb := tarball(t, map[string]string{"README.md": "x", "crowdsec-gram-bot": "NEWBINARY"})
-	sum := sha256.Sum256(tb)
-	sums := []byte(hex.EncodeToString(sum[:]) + "  " + AssetName(tag) + "\n")
-	f.files[AssetName(tag)] = tb
+	sum := sha256.Sum256(payload())
+	sums := []byte(hex.EncodeToString(sum[:]) + "  " + BinaryName(tag) + "\n")
+	f.files[BinaryName(tag)] = payload()
 	f.files[sumsName] = sums
 	f.files[sigName] = ed25519.Sign(signer, sums)
 	if tamper != nil {
@@ -127,7 +109,7 @@ func TestDownloadVerifiesSignatureAndChecksum(t *testing.T) {
 		t.Fatal("release signed by another key was accepted")
 	}
 	swapped := newFakeGitHub(t, priv, func(m map[string][]byte) {
-		m[AssetName("v1.2.3")] = tarball(t, map[string]string{"crowdsec-gram-bot": "EVIL"})
+		m[BinaryName("v1.2.3")] = []byte("EVIL")
 	})
 	if _, err := download(t, swapped, pub); err == nil || !strings.Contains(err.Error(), "checksum") {
 		t.Fatalf("swapped tarball: %v", err)

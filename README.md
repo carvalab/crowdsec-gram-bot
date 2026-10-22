@@ -62,16 +62,20 @@ Ubuntu's own `crowdsec` package is too old for allowlists.
 ```sh
 arch=$(dpkg --print-architecture) && mkdir -p ~/csgb && cd ~/csgb && \
 base=https://github.com/carvalab/crowdsec-gram-bot/releases/latest/download && \
-curl -fsSLO "$base/crowdsec-gram-bot_linux_$arch" && \
-curl -fsSLO "$base/checksums.txt" && \
-curl -fsSLO "$base/checksums.txt.sig" && \
+echo "1/4 downloading crowdsec-gram-bot_linux_$arch" && \
+curl -fL --connect-timeout 15 --progress-bar -O "$base/crowdsec-gram-bot_linux_$arch" && \
+curl -fsSL --connect-timeout 15 -O "$base/checksums.txt" && \
+curl -fsSL --connect-timeout 15 -O "$base/checksums.txt.sig" && \
 printf '%s\n' '-----BEGIN PUBLIC KEY-----' \
   'MCowBQYDK2VwAyEAOCmvuqGInMtB99Rd/1cm261kAtVWFeNaBuafHIIU6Dw=' \
   '-----END PUBLIC KEY-----' > release-signing-key.pub.pem && \
+echo "2/4 checking the signature" && \
 openssl pkeyutl -verify -rawin -pubin -inkey release-signing-key.pub.pem \
   -in checksums.txt -sigfile checksums.txt.sig && \
+echo "3/4 checking the checksum" && \
 sha256sum --ignore-missing -c checksums.txt && \
 chmod +x "crowdsec-gram-bot_linux_$arch" && \
+echo "4/4 installing (sudo may ask for your password)" && \
 sudo "./crowdsec-gram-bot_linux_$arch" install
 ```
 

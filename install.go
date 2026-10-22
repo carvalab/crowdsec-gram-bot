@@ -125,6 +125,7 @@ func runUninstall(ctx context.Context) error {
 	os.Remove(binPath)
 	os.Remove(binPath + ".old")
 	os.RemoveAll("/var/lib/crowdsec-gram-bot")
+	os.RemoveAll("/var/lib/crowdsec-gram-bot-telegram")
 	if exec.CommandContext(ctx, "id", "-u", botUser).Run() == nil {
 		if err := exec.CommandContext(ctx, "userdel", botUser).Run(); err != nil {
 			return fmt.Errorf("userdel %s: %w", botUser, err)
